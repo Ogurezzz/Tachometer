@@ -1,6 +1,6 @@
 #include "shiftLED.h"
-const uint8_t numberArr[10] = {0xfc,0x60,0xda,0xf2,0x66,0xb6,0xbe,0xe0,0xfe,0xf6};
-const uint8_t segment[7] = {0x10,0x20,0x40,0x80,0x02,0x04,0x08};
+const uint8_t numberArr[10] PROGMEM = {0xfc,0x60,0xda,0xf2,0x66,0xb6,0xbe,0xe0,0xfe,0xf6};
+const uint8_t segment[7] PROGMEM = {0x10,0x20,0x40,0x80,0x02,0x04,0x08};
 uint8_t screenArr[SEGMENTS_NUM*2];
 uint8_t dotPosition;
 
@@ -24,17 +24,17 @@ void dispPrintFloat(float number){
 }
 
 void makeArr(uint32_t digit){
-uint8_t *outArr = &screenArr[1];
+uint8_t *outArr = &screenArr[0];
 for (uint8_t i = 0; i < SEGMENTS_NUM; i++)
 	{
-            *outArr=segment[i];
+            *outArr= pgm_read_byte(&(segment[i]));
             outArr++;
             if ((digit==0)&&i>dotPosition)
             {
                 *outArr = 0x00;
             }else
             {
-                *outArr= numberArr[digit%10];
+                *outArr= pgm_read_byte(&(numberArr[digit%10]));
                 if (i==dotPosition) *outArr|=1;			//Ставим точку где надо.
                 digit/=10;
             }

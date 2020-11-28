@@ -56,7 +56,6 @@ ISR(TIMER2_COMPA_vect)								//Прерывание. 1 раз в мс.
 
 int main(void)
 {
-	static uint8_t pointPosition = 0;
 	DDRC = 0x07;
 	PORTC = 0x18;
 	DDRB &= ~(1<<8);               		//Включаем пин захвата
@@ -64,16 +63,14 @@ int main(void)
 
 	// Настраиваем Таймер1.
 	TCCR1A = 0;
-	TCCR1B = 0;
 	TCCR1B = (1<<ICNC1); 				//Включаем детектор импульсов, считывание по ниспадающему фронту.
 	TIMSK1 = (1<<ICIE1) | (1<<TOIE1); 	//Включаем прерывания по Input Capture и Overflow
 
 	//Настраиваем таймр тиков (1мс)
 	TCCR2A = 2<<WGM20; 				// Установить режим Compare Match
     TCCR2B = 4<<CS20;               // Предделитель 64
-	// Автосброс после достижения регистра сравнения
-	TCNT2 = 0;						// Установить начальное значение счётчиков
 	OCR2A  = 125; 					// Установить значение в регистр сравнения
+	TCNT2 = 0;						// Установить начальное значение счётчиков
 	TIMSK2 |= 1<<OCIE2A;			// Разрешаем прерывание RTOS - запуск ОС
     asm volatile("sei");			//Включаем прерывания
 	resetTimer();
@@ -81,6 +78,7 @@ int main(void)
     {
 		if (overflowed)
 		{
+			
 			if (captured[0] && captured[1]) 
 			{
 				measuredSpeed = (((float)((F_CPU*rpm_mux) / prescaller[prescallerIndex])) / (captured[1] - captured[0]));

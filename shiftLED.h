@@ -2,6 +2,7 @@
 #define SHIFTLED_H
 
 #include <avr/io.h>
+#include <avr/pgmspace.h>
 
 #define SOFTWARE_SPI
 
@@ -23,7 +24,7 @@ void dispPrintFloat(float number);
 void moveDot(float number);
 void makeArr(uint32_t digit);
 void printData(void);
-
+uint8_t maxPointPos(float number);
 
 
 
