@@ -78,20 +78,26 @@ int main(void)
     {
 		if (overflowed)
 		{
-			
-			if (captured[0] && captured[1]) 
+			uint16_t delta;
+			if (captured[1] && captured[0]) 
 			{
-				measuredSpeed = (((float)((F_CPU*rpm_mux) / prescaller[prescallerIndex])) / (captured[1] - captured[0]));
-				if ( (uint32_t) (captured[1] - captured[0])*(prescaller[prescallerIndex]/prescaller[prescallerIndex-1]) < 65535) 
+				delta = captured[1]-captured[0];
+				measuredSpeed = (((float)((F_CPU / prescaller[prescallerIndex]) * rpm_mux)) / (delta)); //Расчет скорости
+				/*Проверяем, впишется ли данная частота в интервал измерений при меньшем предделителе.
+				Если вписывается - переходим на него.
+				Меньший предделитель даст бОльшее количество тактов между импульсами
+				Это в свою очередь улучшит точность расчетов.*/
+				if ( (uint32_t) (delta)*(prescaller[prescallerIndex]/prescaller[prescallerIndex-1]) < 65535) 
 				{
 					if (prescallerIndex>0) prescallerIndex--;
 				}
 			}else if(!captured[1])
 			{
-				if (prescallerIndex<3)prescallerIndex++;
+				if (prescallerIndex<4)prescallerIndex++;
 				measuredSpeed = 0;
 			}
 			dispPrintFloat(measuredSpeed);
+			//dispPrintFloat((float) delta + prescallerIndex*1000000);
 			resetTimer();
 		}
 	}
