@@ -7,7 +7,7 @@ uint8_t dotPosition = 2;
 
 void moveDot(float number){
     dotPosition++;
-    if (dotPosition>SEGMENTS_NUM)dotPosition=0;
+    if (dotPosition>=SEGMENTS_NUM)dotPosition=0;
     dispPrintFloat(number);
 }
 

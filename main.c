@@ -33,6 +33,7 @@ void resetTimer(void);
 void doTick(void);
 void keyboardAction(void);
 
+
 ISR(TIMER1_OVF_vect)			//Вектор прерывания по переполнения таймера №1
 {
   TCCR1B &= ~((1<<CS12) | (1<<CS11) | (1<<CS10)); // Stop Timer1
@@ -82,7 +83,7 @@ int main(void)
 			if (captured[1] && captured[0]) 
 			{
 				delta = captured[1]-captured[0];
-				measuredSpeed = (((float)((F_CPU / prescaller[prescallerIndex]) * rpm_mux)) / (delta)); //Расчет скорости
+				measuredSpeed = (((float)((F_CPU / prescaller[prescallerIndex]))) / (delta)); //Расчет скорости
 				/*Проверяем, впишется ли данная частота в интервал измерений при меньшем предделителе.
 				Если вписывается - переходим на него.
 				Меньший предделитель даст бОльшее количество тактов между импульсами
@@ -96,7 +97,7 @@ int main(void)
 				if (prescallerIndex<4)prescallerIndex++;
 				measuredSpeed = 0;
 			}
-			dispPrintFloat(measuredSpeed);
+			
 			//dispPrintFloat((float) delta + prescallerIndex*1000000);
 			resetTimer();
 		}
@@ -133,13 +134,28 @@ void resetTimer(void){
 }
 
 void doTick(void){
-	static uint8_t ticks = 0;
+	static uint8_t kbdTicks = 0;
+	static uint16_t dispTicks = 0;
+	static float speed = 0;
 	printData();
-	ticks++;
-	if (ticks>100){
+	if (kbdTicks>100){
 		keyboardAction();
-		ticks = 0;
+		kbdTicks = 0;
+	}else{
+		kbdTicks++;
 	}
+	if (dispTicks>500){
+		if (measuredSpeed>100) {
+			speed += (measuredSpeed-speed)*0.1;
+		}else{
+			speed = measuredSpeed;
+		}
+		dispPrintFloat(speed * rpm_mux);
+		dispTicks = 0;
+	}else{
+		dispTicks++;
+	}
+	
 }
 
 void keyboardAction(void){
