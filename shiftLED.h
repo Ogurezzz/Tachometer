@@ -21,6 +21,7 @@
  *  @param number 
  */
 void dispPrintFloat(float number);
+//void dispPrintInt(uint32_t number);
 void moveDot(float number);
 void makeArr(uint32_t digit);
 void printData(void);

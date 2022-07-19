@@ -8,49 +8,45 @@
 #include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
+#include <avr/sfr_defs.h>
 #include "shiftLED.h"
-const uint16_t prescaller[5] = {1,8,64,256,1024};
 
-volatile uint16_t captured[2];
-volatile uint8_t overflowed;
-float measuredSpeed;			//Измеренная скорость
-uint8_t prescallerIndex = 0;	//По-умолчанию задаем самый быстрый прескаллер.
-uint8_t rpm_mux = 1;
-
-#define BTN_MASK 0x18		//MASK = MODE|POINT
-#define BTN_MODE 0x08		//PC4 - MODE
-#define BTN_POINT 0x10		//PC3 - POINT
+#define BUF_SIZE	16
+#define BTN_MASK 	0x18		//MASK = MODE|POINT
+#define BTN_MODE 	0x08		//PC4 - MODE
+#define BTN_POINT 	0x10		//PC3 - POINT
+#define F_CPU2		16021323UL
 
 
-//void printData(void);
-
-/*! \brief Подготовка массива для вывода данных.
- *
- *  Подаем на вход float. На выходе массив с заданным количеством
- *  знаков после запятой
- */
-void resetTimer(void);
-void doTick(void);
-void keyboardAction(void);
+volatile float 	measuredSpeed;				//Измеренная скорость
+volatile uint32_t 	cycles = 0;				//Количество полных циклов с последнего отсчета
+volatile uint8_t 	rpm_mux = 60;			//Множитель скорости
+volatile float 	measureBuff[BUF_SIZE];		//Буффер с измерениями.
+volatile uint8_t	measuredIndex=0;		//Индекс буффера.
 
 
-ISR(TIMER1_OVF_vect)			//Вектор прерывания по переполнения таймера №1
+void doTick(void);						//Рутина на каждую 1мс
+void keyboardAction(void);				//Проверка клавиатуры
+
+
+
+ISR(TIMER1_OVF_vect,ISR_NOBLOCK)			//Вектор прерывания по переполнения таймера №1
 {
-  TCCR1B &= ~((1<<CS12) | (1<<CS11) | (1<<CS10)); // Stop Timer1
-  overflowed = 1;
+	cycles++;
 }
 
-ISR(TIMER1_CAPT_vect)			//Вектор прерывания по порту захвата таймера №1
+ISR(TIMER1_CAPT_vect)						//Вектор прерывания по порту захвата таймера №1
 {
-  volatile uint16_t icr = ICR1;
-  if (icr > captured[1]) 		// новое должно быть больше старого.
-  {
-    captured[0] = captured[1];
-    captured[1] = icr;
-  }
+	volatile uint32_t delta=0;
+	TCNT1=0;
+	delta = ICR1;
+	delta+= ((cycles)*0xffff);
+	cycles = 0;
+	measureBuff[measuredIndex++] = ((float)F_CPU2/ (float)delta);
+	if (measuredIndex==BUF_SIZE)	measuredIndex = 0;
 }
 
-ISR(TIMER2_COMPA_vect)								//Прерывание. 1 раз в мс.
+ISR(TIMER2_COMPA_vect,ISR_NOBLOCK)								//Прерывание. 1 раз в мс. Без блокировки остальных прерываний
 {
 	doTick();
 }
@@ -59,98 +55,59 @@ int main(void)
 {
 	DDRC = 0x07;
 	PORTC = 0x18;
-	DDRB &= ~(1<<8);               		//Включаем пин захвата
+	DDRB &= ~_BV(PB0);               	//Включаем пин захвата
+	PORTB |= _BV(PB0);					//Внутренняя подтяжка
   	asm volatile("cli");		  		//Выключаем прерывания
 
 	// Настраиваем Таймер1.
 	TCCR1A = 0;
-	TCCR1B = (1<<ICNC1); 				//Включаем детектор импульсов, считывание по ниспадающему фронту.
-	TIMSK1 = (1<<ICIE1) | (1<<TOIE1); 	//Включаем прерывания по Input Capture и Overflow
+	TCCR1B = _BV(ICNC1)|_BV(ICES1)|_BV(CS10); 		//Включаем детектор импульсов, считывание по возрастающему фронту.
+	TIMSK1 = _BV(ICIE1)|_BV(TOIE1); 				//Включаем прерывания по Input Capture и Overflow
 
 	//Настраиваем таймр тиков (1мс)
 	TCCR2A = 2<<WGM20; 				// Установить режим Compare Match
     TCCR2B = 4<<CS20;               // Предделитель 64
-	OCR2A  = 125; 					// Установить значение в регистр сравнения
+	OCR2A  = 250; 					// Установить значение в регистр сравнения
 	TCNT2 = 0;						// Установить начальное значение счётчиков
 	TIMSK2 |= 1<<OCIE2A;			// Разрешаем прерывание RTOS - запуск ОС
     asm volatile("sei");			//Включаем прерывания
-	resetTimer();
     while (1) 
     {
-		if (overflowed)
-		{
-			uint16_t delta;
-			if (captured[1] && captured[0]) 
-			{
-				delta = captured[1]-captured[0];
-				measuredSpeed = (((float)((F_CPU / prescaller[prescallerIndex]))) / (delta)); //Расчет скорости
-				/*Проверяем, впишется ли данная частота в интервал измерений при меньшем предделителе.
-				Если вписывается - переходим на него.
-				Меньший предделитель даст бОльшее количество тактов между импульсами
-				Это в свою очередь улучшит точность расчетов.*/
-				if ( (uint32_t) (delta)*(prescaller[prescallerIndex]/prescaller[prescallerIndex-1]) < 65535) 
-				{
-					if (prescallerIndex>0) prescallerIndex--;
-				}
-			}else if(!captured[1])
-			{
-				if (prescallerIndex<4)prescallerIndex++;
-				measuredSpeed = 0;
-			}
-			
-			//dispPrintFloat((float) delta + prescallerIndex*1000000);
-			resetTimer();
-		}
+
 	}
-}
-
-
-void resetTimer(void){
-		asm volatile("cli");		  		//Выключаем прерывания
-		//Обнуляемся, настраиваем предделитель и прочая лабуда.
-		overflowed = 0;	//Сбрасываем флаг переполнения таймера.
-		captured[0] = captured[1] = 0;		//Обнуляем значения стробов.
-		TCNT1 = 0;							//Обнуляем значение таймера
-		//Выбор и установка прескаллера.
-		switch (prescaller[prescallerIndex]){
-			case 1:
-			TCCR1B = 0x81;
-			break;
-			case 8:
-			TCCR1B = 0x82;
-			break;
-			case 64:
-			TCCR1B = 0x83;
-			break;
-			case 256:
-			TCCR1B = 0x84;
-			break;
-			case 1024:
-			TCCR1B = 0x85;
-			break;
-		}
-		TIFR1 = (0<<ICF1) | (0<<TOV1);      // Обнуляем прерывания, если вдруг они случились, пока мы тут тусим.
-    	asm volatile("sei");				//Включаем прерывания
 }
 
 void doTick(void){
 	static uint8_t kbdTicks = 0;
 	static uint16_t dispTicks = 0;
-	static float speed = 0;
-	printData();
-	if (kbdTicks>100){
+
+		printData();
+
+	if (kbdTicks>50){
 		keyboardAction();
 		kbdTicks = 0;
 	}else{
 		kbdTicks++;
 	}
-	if (dispTicks>500){
-		if (measuredSpeed>100) {
-			speed += (measuredSpeed-speed)*0.1;
+
+	if (dispTicks>1000){
+		double calcSpeed = 0;
+		int8_t i = 0;
+		if (measuredIndex){
+			i=measuredIndex-1;
 		}else{
-			speed = measuredSpeed;
+			i=BUF_SIZE-1;
 		}
-		dispPrintFloat(speed * rpm_mux);
+		if (measureBuff[i]>2){
+			for (uint8_t j = 0; j<BUF_SIZE;j++){
+				calcSpeed+=(measureBuff[j]);
+			}
+			calcSpeed/=BUF_SIZE;
+		}else{
+			calcSpeed=measureBuff[i];
+		}
+		dispPrintFloat((float) (calcSpeed*rpm_mux));
+		
 		dispTicks = 0;
 	}else{
 		dispTicks++;
@@ -172,17 +129,16 @@ void keyboardAction(void){
 			if (last_btns == 8) break;
 			if (rpm_mux == 1)
 			{
-				rpm_mux=60;
-				measuredSpeed*=60;
+				rpm_mux = 60;
 			}else
 			{
-				rpm_mux=1;
-				measuredSpeed/=60;
+				rpm_mux = 1;
 			}
-			dispPrintFloat(measuredSpeed);
+				
 			break;
 		default:
 			break;
 		}
 	last_btns = currButtons;
 }
+

@@ -13,14 +13,16 @@ void moveDot(float number){
 
 void dispPrintFloat(float number){
     uint8_t maxDotPosition = maxPointPos(number);
+	uint32_t multiplexer = 1;
     if (dotPosition>maxDotPosition) dotPosition=maxDotPosition;
-    uint32_t multiplexer = 1;
-	for (uint8_t i = 0; i < dotPosition; i++)
-	{
+	for (uint8_t i = 0; i < dotPosition; i++){
 		multiplexer *=10;
 	}
-	int32_t num2Print = ((int32_t) (number*multiplexer));
-    makeArr(num2Print);
+    makeArr(number*multiplexer);
+}
+void dispPrintInt(uint32_t number){
+	dotPosition=2;
+	makeArr(number);
 }
 
 void makeArr(uint32_t digit){
@@ -66,7 +68,7 @@ void printData(){
         LED_PORT &= ~(1<<LED_LAT_PIN);
     }
 	seg++;
-	if (seg>(SEGMENTS_NUM*2-1))seg=0;
+	if (seg==(SEGMENTS_NUM*2))seg=0;
     
 }
 
